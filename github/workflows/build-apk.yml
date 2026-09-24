@@ -1,0 +1,62 @@
+name: Build Native APK (Flat Files)
+on: [push, workflow_dispatch]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Build APK
+        run: |
+          echo "=== Starting flat build ==="
+          mkdir -p gradle/wrapper
+          mkdir -p app/src/main/java/com/example/smartalarm
+          mkdir -p app/src/main/res/layout
+          mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/mipmap-hdpi
+          mkdir -p app/src/main/res/mipmap-mdpi
+          # Move files if exist
+          [ -f gradle-wrapper.properties ] && cp gradle-wrapper.properties gradle/wrapper/gradle-wrapper.properties || echo "wrapper props not found, creating new"
+          [ -f app_build.gradle ] && cp app_build.gradle app/build.gradle || echo "app_build.gradle missing!"
+          [ -f AndroidManifest.xml ] && cp AndroidManifest.xml app/src/main/AndroidManifest.xml || true
+          [ -f themes.xml ] && cp themes.xml app/src/main/res/values/themes.xml || true
+          [ -f activity_main.xml ] && cp activity_main.xml app/src/main/res/layout/activity_main.xml || true
+          [ -f activity_alarm_ring.xml ] && cp activity_alarm_ring.xml app/src/main/res/layout/activity_alarm_ring.xml || true
+          for jf in MainActivity.java AlarmReceiver.java AlarmService.java AlarmRingActivity.java BootReceiver.java; do [ -f $jf ] && cp $jf app/src/main/java/com/example/smartalarm/ || echo "$jf missing"; done
+          # Create missing wrapper properties if not exist
+          if [ ! -f gradle/wrapper/gradle-wrapper.properties ]; then
+            echo "distributionBase=GRADLE_USER_HOME" > gradle/wrapper/gradle-wrapper.properties
+            echo "distributionPath=wrapper/dists" >> gradle/wrapper/gradle-wrapper.properties
+            echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.4-bin.zip" >> gradle/wrapper/gradle-wrapper.properties
+            echo "zipStoreBase=GRADLE_USER_HOME" >> gradle/wrapper/gradle-wrapper.properties
+            echo "zipStorePath=wrapper/dists" >> gradle/wrapper/gradle-wrapper.properties
+          fi
+          # Create dummy icons to prevent build failure
+          echo '<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108"><path android:fillColor="#3DDC84" android:pathData="M0,0h108v108h-108z"/></vector>' > app/src/main/res/mipmap-hdpi/ic_launcher.xml
+          cp app/src/main/res/mipmap-hdpi/ic_launcher.xml app/src/main/res/mipmap-hdpi/ic_launcher_round.xml
+          cp app/src/main/res/mipmap-hdpi/ic_launcher.xml app/src/main/res/mipmap-mdpi/ic_launcher.xml
+          cp app/src/main/res/mipmap-hdpi/ic_launcher.xml app/src/main/res/mipmap-mdpi/ic_launcher_round.xml
+          # Create settings.gradle and root build.gradle if missing
+          [ -f settings.gradle ] || echo "include ':app'" > settings.gradle
+          [ -f build.gradle ] || echo -e "task clean(type: Delete) { delete rootProject.buildDir }" > build.gradle
+          # Create gradle wrapper script that uses system gradle
+          echo '#!/bin/sh' > gradlew
+          echo 'gradle "$@"' >> gradlew
+          chmod +x gradlew
+          ls -R
+          # Install gradle via sdkman or apt
+          wget -q https://services.gradle.org/distributions/gradle-8.4-bin.zip -O /tmp/gradle.zip || curl -L https://services.gradle.org/distributions/gradle-8.4-bin.zip -o /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /tmp
+          export PATH=/tmp/gradle-8.4/bin:$PATH
+          gradle assembleDebug --stacktrace
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SmartAlarm-Native-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
