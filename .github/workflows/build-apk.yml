@@ -1,0 +1,46 @@
+name: Build Native APK (Flat Files)
+on: [push, workflow_dispatch]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Setup Gradle 8.4
+        uses: gradle/gradle-build-action@v3
+        with:
+          gradle-version: 8.4
+      - name: Reconstruct and Build
+        run: |
+          echo "Making folders..."
+          mkdir -p gradle/wrapper
+          mkdir -p app/src/main/java/com/example/smartalarm
+          mkdir -p app/src/main/res/layout
+          mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/mipmap-hdpi
+          mv gradle-wrapper.properties gradle/wrapper/gradle-wrapper.properties || true
+          mv app_build.gradle app/build.gradle || true
+          mv AndroidManifest.xml app/src/main/AndroidManifest.xml || true
+          mv themes.xml app/src/main/res/values/themes.xml || true
+          mv activity_main.xml app/src/main/res/layout/activity_main.xml || true
+          mv activity_alarm_ring.xml app/src/main/res/layout/activity_alarm_ring.xml || true
+          mv MainActivity.java app/src/main/java/com/example/smartalarm/ || true
+          mv AlarmReceiver.java app/src/main/java/com/example/smartalarm/ || true
+          mv AlarmService.java app/src/main/java/com/example/smartalarm/ || true
+          mv AlarmRingActivity.java app/src/main/java/com/example/smartalarm/ || true
+          mv BootReceiver.java app/src/main/java/com/example/smartalarm/ || true
+          echo '<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108"><path android:fillColor="#3DDC84" android:pathData="M0,0h108v108h-108z"/></vector>' > app/src/main/res/mipmap-hdpi/ic_launcher.xml
+          cp app/src/main/res/mipmap-hdpi/ic_launcher.xml app/src/main/res/mipmap-hdpi/ic_launcher_round.xml
+          cat app/build.gradle
+          gradle assembleDebug --stacktrace
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SmartAlarm-Native-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
