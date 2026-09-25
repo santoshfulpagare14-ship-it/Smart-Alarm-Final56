@@ -5,31 +5,31 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-      - name: Build APK
+
+      - name: Build APK (No setup-android bug)
         run: |
-          echo "=== Starting flat build ==="
+          echo "=== Reconstructing project from flat files ==="
           mkdir -p gradle/wrapper
           mkdir -p app/src/main/java/com/example/smartalarm
           mkdir -p app/src/main/res/layout
           mkdir -p app/src/main/res/values
           mkdir -p app/src/main/res/mipmap-hdpi
           mkdir -p app/src/main/res/mipmap-mdpi
-          # Move files if exist
-          [ -f gradle-wrapper.properties ] && cp gradle-wrapper.properties gradle/wrapper/gradle-wrapper.properties || echo "wrapper props not found, creating new"
-          [ -f app_build.gradle ] && cp app_build.gradle app/build.gradle || echo "app_build.gradle missing!"
+
+          [ -f gradle-wrapper.properties ] && cp gradle-wrapper.properties gradle/wrapper/gradle-wrapper.properties || true
+          [ -f app_build.gradle ] && cp app_build.gradle app/build.gradle || true
           [ -f AndroidManifest.xml ] && cp AndroidManifest.xml app/src/main/AndroidManifest.xml || true
           [ -f themes.xml ] && cp themes.xml app/src/main/res/values/themes.xml || true
           [ -f activity_main.xml ] && cp activity_main.xml app/src/main/res/layout/activity_main.xml || true
           [ -f activity_alarm_ring.xml ] && cp activity_alarm_ring.xml app/src/main/res/layout/activity_alarm_ring.xml || true
           for jf in MainActivity.java AlarmReceiver.java AlarmService.java AlarmRingActivity.java BootReceiver.java; do [ -f $jf ] && cp $jf app/src/main/java/com/example/smartalarm/ || echo "$jf missing"; done
-          # Create missing wrapper properties if not exist
+
           if [ ! -f gradle/wrapper/gradle-wrapper.properties ]; then
             echo "distributionBase=GRADLE_USER_HOME" > gradle/wrapper/gradle-wrapper.properties
             echo "distributionPath=wrapper/dists" >> gradle/wrapper/gradle-wrapper.properties
@@ -37,24 +37,40 @@ jobs:
             echo "zipStoreBase=GRADLE_USER_HOME" >> gradle/wrapper/gradle-wrapper.properties
             echo "zipStorePath=wrapper/dists" >> gradle/wrapper/gradle-wrapper.properties
           fi
-          # Create dummy icons to prevent build failure
+
           echo '<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108"><path android:fillColor="#3DDC84" android:pathData="M0,0h108v108h-108z"/></vector>' > app/src/main/res/mipmap-hdpi/ic_launcher.xml
           cp app/src/main/res/mipmap-hdpi/ic_launcher.xml app/src/main/res/mipmap-hdpi/ic_launcher_round.xml
           cp app/src/main/res/mipmap-hdpi/ic_launcher.xml app/src/main/res/mipmap-mdpi/ic_launcher.xml
           cp app/src/main/res/mipmap-hdpi/ic_launcher.xml app/src/main/res/mipmap-mdpi/ic_launcher_round.xml
-          # Create settings.gradle and root build.gradle if missing
+
           [ -f settings.gradle ] || echo "include ':app'" > settings.gradle
-          [ -f build.gradle ] || echo -e "task clean(type: Delete) { delete rootProject.buildDir }" > build.gradle
-          # Create gradle wrapper script that uses system gradle
+          [ -f build.gradle ] || echo "task clean(type: Delete) { delete rootProject.buildDir }" > build.gradle
+
           echo '#!/bin/sh' > gradlew
           echo 'gradle "$@"' >> gradlew
           chmod +x gradlew
-          ls -R
-          # Install gradle via sdkman or apt
-          wget -q https://services.gradle.org/distributions/gradle-8.4-bin.zip -O /tmp/gradle.zip || curl -L https://services.gradle.org/distributions/gradle-8.4-bin.zip -o /tmp/gradle.zip
+
+          echo "=== Installing Android SDK manually (bypassing bug) ==="
+          export ANDROID_HOME=$HOME/android-sdk
+          export ANDROID_SDK_ROOT=$HOME/android-sdk
+          mkdir -p $ANDROID_HOME/cmdline-tools
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmd.zip
+          unzip -q /tmp/cmd.zip -d $ANDROID_HOME/cmdline-tools
+          mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest || true
+          export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          yes | sdkmanager --sdk_root=$ANDROID_HOME "platform-tools" "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1
+
+          echo "=== Installing Gradle 8.4 ==="
+          wget -q https://services.gradle.org/distributions/gradle-8.4-bin.zip -O /tmp/gradle.zip
           unzip -q /tmp/gradle.zip -d /tmp
           export PATH=/tmp/gradle-8.4/bin:$PATH
+          export ANDROID_HOME=$HOME/android-sdk
+          export ANDROID_SDK_ROOT=$HOME/android-sdk
+
+          echo "=== Building APK ==="
           gradle assembleDebug --stacktrace
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
